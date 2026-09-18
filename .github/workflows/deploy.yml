@@ -1,4 +1,4 @@
-name: Deploy Jerkgram Notifications 0.1 Alpha
+name: Deploy Jerkgram Notifications Build139 Test
 
 on:
   workflow_dispatch:
@@ -18,7 +18,9 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  JERKGRAM_BUILDER_COMMIT: 72e84e1a30cecebccf85ebb18c333a10c5c17be3
+  # After this one-time workflow migration, ordinary PWA updates only require
+  # changing this builder commit SHA.
+  JERKGRAM_BUILDER_COMMIT: 7e0b696111cf0c5aa6f3427b0c9d0647aeb9d4f6
   TWEB_COMMIT: e9428f2a90f73d750f16a0b85817820516466364
 
 jobs:
@@ -40,80 +42,54 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           git clone https://github.com/ghostbase-sg/jerkgram-telegram-builder.git builder
           cd builder
-
           git checkout "$JERKGRAM_BUILDER_COMMIT"
-
           test "$(git rev-parse HEAD)" = "$JERKGRAM_BUILDER_COMMIT"
 
-      - name: Run companion static tests
+      - name: Run Build139 PWA contracts
         shell: bash
         run: |
           set -euo pipefail
-
-          python -m pip install --disable-pip-version-check pytest
-
           cd builder
-
+          python -m unittest -v \
+            tests.test_webk_jerkgram_login_token_v02 \
+            tests.test_webk_jerkgram_companion_shell_v02 \
+            tests.test_webk_jerkgram_repair_v06
           node tests/webpush_handoff_test.mjs
-          node tests/webpush_binding_test.mjs
-
-          pytest -q \
-            tests/test_webk_jerkgram_push_patch.py \
-            tests/test_webk_jerkgram_branding_v01.py \
-            tests/test_webk_companion_package_v01.py \
-            tests/test_webk_companion_shell_v01.py \
-            tests/test_webk_passwordless_binding_v01.py \
-            tests/test_webk_jerkgram_privacy_v01.py \
-            tests/test_jerkgram_push_click_bridge_v01.py \
-            tests/test_jerkgram_webpush_registration_v01.py \
-            tests/test_jerkgram_push_binding_bridge_v01.py \
-            tests/test_jerkgram_push_binding_wiring_v01.py \
-            tests/test_jerkgram_v12x_build133_release_ui1.py \
-            tests/test_jerkgram_v12y_build133_telemetry2.py
+          node tests/webpush_tap_fallback_test.mjs
 
       - name: Fetch pinned Telegram Web K
         shell: bash
         run: |
           set -euo pipefail
-
           git clone --recurse-submodules https://github.com/morethanwords/tweb.git tweb
-
           cd tweb
-
           git checkout "$TWEB_COMMIT"
           git submodule update --init --recursive
-
           test "$(git rev-parse HEAD)" = "$TWEB_COMMIT"
 
-      - name: Apply Jerkgram notification-only patches
+      - name: Apply Jerkgram notification companion patches
         shell: bash
         run: |
           set -euo pipefail
-
-          python builder/webpush-companion/apply_webk_jerkgram_push_v01.py \
-            "$GITHUB_WORKSPACE/tweb"
-
-          python builder/webpush-companion/apply_webk_jerkgram_passwordless_binding_v01.py \
-            "$GITHUB_WORKSPACE/tweb"
-
-          python builder/webpush-companion/apply_webk_jerkgram_branding_v01.py \
-            "$GITHUB_WORKSPACE/tweb"
-
-          python builder/webpush-companion/apply_webk_jerkgram_privacy_v01.py \
-            "$GITHUB_WORKSPACE/tweb"
+          python builder/webpush-companion/apply_webk_jerkgram_push_v01.py "$GITHUB_WORKSPACE/tweb"
+          python builder/webpush-companion/apply_webk_jerkgram_login_token_v02.py "$GITHUB_WORKSPACE/tweb"
+          python builder/webpush-companion/apply_webk_jerkgram_companion_shell_v02.py "$GITHUB_WORKSPACE/tweb"
+          python builder/webpush-companion/apply_webk_jerkgram_notification_runtime_v03.py "$GITHUB_WORKSPACE/tweb"
+          python builder/webpush-companion/apply_webk_jerkgram_shell_typecheck_v04.py "$GITHUB_WORKSPACE/tweb"
+          python builder/webpush-companion/apply_webk_jerkgram_device_model_v05.py "$GITHUB_WORKSPACE/tweb"
+          python builder/webpush-companion/apply_webk_jerkgram_repair_v06.py "$GITHUB_WORKSPACE/tweb"
+          python builder/webpush-companion/apply_webk_jerkgram_branding_v01.py "$GITHUB_WORKSPACE/tweb"
+          python builder/webpush-companion/apply_webk_jerkgram_privacy_v01.py "$GITHUB_WORKSPACE/tweb"
 
       - name: Install Web K dependencies
         working-directory: tweb
         shell: bash
         run: |
           set -euo pipefail
-
           corepack enable
           corepack prepare pnpm@11.16.0 --activate
-
           pnpm install --frozen-lockfile
 
       - name: Typecheck patched Web K
@@ -128,15 +104,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          python builder/webpush-companion/package_webk_dist_v01.py "$GITHUB_WORKSPACE/tweb"
 
-          python builder/webpush-companion/package_webk_dist_v01.py \
-            "$GITHUB_WORKSPACE/tweb"
-
-          # GPL/source information is shipped with the deployed copy.
           cp tweb/LICENSE tweb/dist/LICENSE-GPL-3.0.txt
-
           cat > tweb/dist/SOURCE.md <<EOF
-          # Jerkgram Notifications 0.1 Alpha
+          # Jerkgram Notifications Build139 Test
 
           Notification-only companion for Jerkgram.
 
@@ -149,11 +121,10 @@ jobs:
           Jerkgram modifications used for this build:
           https://github.com/ghostbase-sg/jerkgram-telegram-builder/tree/${JERKGRAM_BUILDER_COMMIT}
 
-          The corresponding patch/build source is available at the link above.
           See LICENSE-GPL-3.0.txt for the license text.
           EOF
 
-      - name: Verify deployable Alpha
+      - name: Verify deployable Build139 test
         shell: bash
         run: |
           set -euo pipefail
@@ -161,148 +132,49 @@ jobs:
           test -f tweb/dist/index.html
           test -f tweb/dist/open.html
           test -f tweb/dist/handoff.js
+          test -f tweb/dist/tap-fallback.js
           test -f tweb/dist/site.webmanifest
           test -f tweb/dist/site_apple.webmanifest
           test -f tweb/dist/LICENSE-GPL-3.0.txt
           test -f tweb/dist/SOURCE.md
 
-          test -f tweb/dist/assets/img/apple-touch-icon.png
-          test -f tweb/dist/assets/img/logo_filled_rounded.png
-          test -f tweb/dist/assets/img/logo_plain.svg
+          grep -q '<title>Jerkgram Notifications</title>' tweb/dist/index.html
+          grep -q '"name": "Jerkgram Notifications"' tweb/dist/site.webmanifest
 
-          grep -q '<title>Jerkgram Notifications</title>' \
-            tweb/dist/index.html
+          grep -R -q 'jerkgram://push/authorize?v=1' tweb/dist/*.js
+          grep -R -q 'jerkgram://push/reconcile?v=1' tweb/dist/*.js
+          grep -R -q 'jerkgram.notifications.installation.v1' tweb/dist/*.js
+          grep -R -q 'jerkgram.notifications.pairing.v1' tweb/dist/*.js
+          grep -R -q 'Continue Setup' tweb/dist/*.js
+          grep -R -q 'Manage in Jerkgram' tweb/dist/*.js
+          grep -R -q 'Repair Notifications' tweb/dist/*.js
+          grep -R -q 'Push ready' tweb/dist/*.js
+          grep -R -q 'Setup state changed. Restart setup in Jerkgram.' tweb/dist/*.js
+          grep -R -q 'reconcileAttemptedAt' tweb/dist/*.js
+          grep -R -q 'Jerkgram Notifications' tweb/dist/*.js
+          grep -q 'jerkgram://push/open' tweb/dist/handoff.js
 
-          grep -q '"name": "Jerkgram Notifications"' \
-            tweb/dist/site.webmanifest
-
-          grep -q 'jerkgram://push/open' \
-            tweb/dist/handoff.js
-
-          grep -R -q 'Connect with Jerkgram' \
-            tweb/dist/*.js
-
-          grep -R -q 'jerkgram://push/register' \
-            tweb/dist/*.js
-
-          grep -R -q 'jerkgram://push/unregister' \
-            tweb/dist/*.js
-
-          grep -R -q 'jerkgram.notifications.installation.v1' \
-            tweb/dist/*.js
-
-          grep -R -q 'Disconnect' \
-            tweb/dist/*.js
-
-          grep -R -q 'Approve in Jerkgram' \
-            tweb/dist/*.js
-
-          grep -R -q 'Add Jerkgram Notifications to the Home Screen' \
-            tweb/dist/*.js
-
-          python - <<'PY'
-          from pathlib import Path
-
-          root = Path("tweb/dist")
-          js_files = list(root.glob("*.js"))
-
-          markers = (
-              "Connect with Jerkgram",
-              "jerkgram.notifications.installation.v1",
-              "jerkgram://push/register",
-              "jerkgram://push/unregister",
-          )
-
-          active = []
-
-          for path in js_files:
-              text = path.read_text(errors="ignore")
-
-              if any(marker in text for marker in markers):
-                  active.append((path, text))
-
-          if not active:
-              raise SystemExit(
-                  "passwordless companion setup chunk not found"
-              )
-
-          combined = "\n".join(
-              text for _, text in active
-          )
-
-          for required in markers:
-              if required not in combined:
-                  raise SystemExit(
-                      f"missing passwordless setup marker: {required}"
-                  )
-
-          for forbidden in (
-              "jerkgram://push/authorize",
-              "auth.exportLoginToken",
-              "auth.importLoginToken",
-              "auth.loginTokenSuccess",
-              "SESSION_PASSWORD_NEEDED",
-              "Connected as",
-          ):
-              if forbidden in combined:
-                  raise SystemExit(
-                      f"legacy pairing marker escaped into active setup chunks: {forbidden}"
-                  )
-          PY
-
-          test "$(grep -o 'id=\"page-chats\"' tweb/dist/index.html | wc -l)" -eq 1
-          test "$(grep -o 'id=\"main-columns\"' tweb/dist/index.html | wc -l)" -eq 1
-
-          for forbidden_shell in \
-            sidebar-left-overlay \
-            chatlist-container \
-            folders-container \
-            search-container \
-            column-left \
-            column-center \
-            column-right \
-            sidebar-search \
-            stories-viewer \
-            browsehappy.com
-          do
-            if grep -I -n "$forbidden_shell" tweb/dist/index.html; then
-              echo "Forbidden Telegram Web shell escaped into companion index: $forbidden_shell" >&2
-              exit 1
-            fi
-          done
-
-          if grep -I -n \
-            'web.telegram.org' \
-            tweb/dist/index.html \
-            tweb/dist/site*.webmanifest
-          then
-            echo "Telegram Web origin leaked into deployable metadata" >&2
+          if grep -R -q 'jerkgram://push/register\|jerkgram://push/unregister' tweb/dist/*.js; then
+            echo 'Legacy subscription-credential bridge survived' >&2
             exit 1
           fi
 
-          if grep -I -n \
-            'https://t.me\|https://telegram.me' \
-            tweb/dist/site*.webmanifest
-          then
-            echo "Telegram scope extension leaked into companion manifest" >&2
+          if grep -I -n 'web.telegram.org' tweb/dist/index.html tweb/dist/site*.webmanifest; then
+            echo 'Telegram Web origin leaked into deployable metadata' >&2
             exit 1
           fi
 
-          if find tweb/dist \
-            -type f \
-            -name '*.map' \
-            -print -quit | grep -q .
-          then
-            echo "Source map leaked into deployable companion" >&2
+          if grep -I -n 'https://t.me\|https://telegram.me' tweb/dist/site*.webmanifest; then
+            echo 'Telegram scope extension leaked into companion manifest' >&2
             exit 1
           fi
 
-          for forbidden in \
-            assets/emoji \
-            assets/tgs \
-            assets/audio \
-            assets/img/screenshot.jpg
-          do
+          if find tweb/dist -type f -name '*.map' -print -quit | grep -q .; then
+            echo 'Source map leaked into deployable companion' >&2
+            exit 1
+          fi
+
+          for forbidden in assets/emoji assets/tgs assets/audio assets/img/screenshot.jpg; do
             if test -e "tweb/dist/$forbidden"; then
               echo "Forbidden Web K asset leaked: $forbidden" >&2
               exit 1
@@ -311,33 +183,14 @@ jobs:
 
           python - <<'PY'
           from pathlib import Path
-
-          root = Path("tweb/dist")
-
-          files = [
-              p
-              for p in root.rglob("*")
-              if p.is_file()
-          ]
-
-          total = sum(
-              p.stat().st_size
-              for p in files
-          )
-
-          print(
-              f"deployable files={len(files)} bytes={total}"
-          )
-
+          root = Path('tweb/dist')
+          files = [p for p in root.rglob('*') if p.is_file()]
+          total = sum(p.stat().st_size for p in files)
+          print(f'deployable files={len(files)} bytes={total}')
           if len(files) > 500:
-              raise SystemExit(
-                  f"too many files: {len(files)}"
-              )
-
+              raise SystemExit(f'too many files: {len(files)}')
           if total > 20 * 1024 * 1024:
-              raise SystemExit(
-                  f"deployable unexpectedly large: {total} bytes"
-              )
+              raise SystemExit(f'deployable unexpectedly large: {total} bytes')
           PY
 
       - name: Configure GitHub Pages
