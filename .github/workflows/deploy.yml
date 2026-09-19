@@ -18,9 +18,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # After this one-time workflow migration, ordinary PWA updates only require
-  # changing this builder commit SHA.
-  JERKGRAM_BUILDER_COMMIT: a103ad4b5e81439d68d178ba50053f252dd32aea
+  JERKGRAM_BUILDER_COMMIT: 5a1ceb5988c49ae63fca9c5e923b82a62fd0c937
   TWEB_COMMIT: e9428f2a90f73d750f16a0b85817820516466364
 
 jobs:
@@ -55,7 +53,8 @@ jobs:
           python -m unittest -v \
             tests.test_webk_jerkgram_login_token_v02 \
             tests.test_webk_jerkgram_companion_shell_v02 \
-            tests.test_webk_jerkgram_repair_v06
+            tests.test_webk_jerkgram_repair_v06 \
+            tests.test_webk_companion_package_v01
           node tests/webpush_handoff_test.mjs
           node tests/webpush_tap_fallback_test.mjs
 
@@ -107,7 +106,7 @@ jobs:
           python builder/webpush-companion/package_webk_dist_v01.py "$GITHUB_WORKSPACE/tweb"
 
           cp tweb/LICENSE tweb/dist/LICENSE-GPL-3.0.txt
-          cat > tweb/dist/SOURCE.md <<EOF
+          cat > tweb/dist/SOURCE.md <<SRC
           # Jerkgram Notifications Build139 Test
 
           Notification-only companion for Jerkgram.
@@ -122,7 +121,7 @@ jobs:
           https://github.com/ghostbase-sg/jerkgram-telegram-builder/tree/${JERKGRAM_BUILDER_COMMIT}
 
           See LICENSE-GPL-3.0.txt for the license text.
-          EOF
+          SRC
 
       - name: Verify deployable Build139 test
         shell: bash
@@ -137,6 +136,11 @@ jobs:
           test -f tweb/dist/site_apple.webmanifest
           test -f tweb/dist/LICENSE-GPL-3.0.txt
           test -f tweb/dist/SOURCE.md
+          test -f tweb/dist/assets/img/pattern.svg
+          grep -q 'id="column-left"' tweb/dist/index.html
+          grep -q 'class="sidebar-slider tabs-container"' tweb/dist/index.html
+          grep -q 'id="column-center"' tweb/dist/index.html
+          grep -q 'id="column-right"' tweb/dist/index.html
 
           grep -q '<title>Jerkgram Notifications</title>' tweb/dist/index.html
           grep -q '"name": "Jerkgram Notifications"' tweb/dist/site.webmanifest
@@ -145,17 +149,21 @@ jobs:
           grep -R -q 'jerkgram://push/reconcile?v=1' tweb/dist/*.js
           grep -R -q 'jerkgram.notifications.installation.v1' tweb/dist/*.js
           grep -R -q 'jerkgram.notifications.pairing.v1' tweb/dist/*.js
-          grep -R -q 'Continue Setup' tweb/dist/*.js
+          grep -R -q 'Connect with Jerkgram' tweb/dist/*.js
           grep -R -q 'Manage in Jerkgram' tweb/dist/*.js
           grep -R -q 'Repair Notifications' tweb/dist/*.js
           grep -R -q 'Push ready' tweb/dist/*.js
-          grep -R -q 'Setup state changed. Restart setup in Jerkgram.' tweb/dist/*.js
-          grep -R -q 'reconcileAttemptedAt' tweb/dist/*.js
           grep -R -q 'Jerkgram Notifications' tweb/dist/*.js
+          grep -R -q 'assets/img/logo_filled_rounded.png' tweb/dist/*.js
           grep -q 'jerkgram://push/open' tweb/dist/handoff.js
 
           if grep -R -q 'jerkgram://push/register\|jerkgram://push/unregister' tweb/dist/*.js; then
             echo 'Legacy subscription-credential bridge survived' >&2
+            exit 1
+          fi
+
+          if grep -R -q 'reconcileAttemptedAt\|RECONCILE_RETRY_DELAY_MS' tweb/dist/*.js; then
+            echo 'Legacy automatic reconcile retry survived' >&2
             exit 1
           fi
 
