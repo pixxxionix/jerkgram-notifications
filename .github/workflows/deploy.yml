@@ -18,7 +18,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  JERKGRAM_BUILDER_COMMIT: 5a1ceb5988c49ae63fca9c5e923b82a62fd0c937
+  JERKGRAM_BUILDER_COMMIT: 2f2758ce41d1df35df33bbbf60e12eefb757acca
   TWEB_COMMIT: e9428f2a90f73d750f16a0b85817820516466364
 
 jobs:
